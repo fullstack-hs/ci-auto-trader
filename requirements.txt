@@ -1,0 +1,2 @@
+python-socketio==5.14.2
+binance_sdk_margin_trading==2.4.0
