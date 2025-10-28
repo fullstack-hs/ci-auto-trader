@@ -195,7 +195,7 @@ class CIAutoTrader:
             if  full_position_quantity <= 0 :
                 params["close_position"] = True
             else:
-                params["quantity"] = float(quantity)
+                params["quantity"] = float(take_profit["quantity"])
                 params["reduce_only"] = True
             self._safe_call(self.client.rest_api.new_order, **params)
             print(
