@@ -33,10 +33,13 @@ class CIAutoTrader:
             self.set_stop_loss_price(self.action_data['symbol'], self.action_data['position']['sl'], self.action_data['direction'], position_mode)
             print(
                 f"[CRYPTO-INSIGHT] Stop loss set at price {self.action_data['position']['sl']} for {self.action_data['symbol']}")
-            self.place_take_profits(self.action_data['symbol'], self.action_data['position']['take_profits'], self.action_data['direction'], position_mode, self.action_data['position']['position'])
             print(f"[CRYPTO-INSIGHT] Position opened: {opened_position}")
             return opened_position
-
+        elif self.action_data["action"] == "PLACE_TP":
+            position_mode = self.get_position_mode()
+            self.place_take_profits(self.action_data['symbol'], self.action_data['position']['take_profits'],
+                                    self.action_data['direction'], position_mode,
+                                    self.action_data['position']['quantity'])
         elif self.action_data["action"] == "DO_TAKE_PROFIT":
             self.do_take_profit(self.action_data['symbol'], self.action_data['quantity'], self.action_data['direction'])
             print(f"[CRYPTO-INSIGHT] Take profit executed: {self.action_data['symbol']}")
