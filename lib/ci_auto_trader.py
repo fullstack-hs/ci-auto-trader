@@ -28,6 +28,11 @@ class CIAutoTrader:
             self.set_leverage(self.action_data['symbol'], self.action_data['position']['leverage'])
             print(f"[CRYPTO-INSIGHT] Leverage f{self.action_data['position']['leverage']} set for: {self.action_data['symbol']}")
             position_mode = self.get_position_mode()
+            if self.has_open_position(self.action_data['symbol'], self.action_data['direction']):
+                print(
+                    f"[CRYPTO-INSIGHT] Position for {self.action_data['symbol']} {self.action_data['direction']} already exists, skip opening"
+                )
+                return None
             opened_position = self.open_position(self.action_data['symbol'], position_mode, self.action_data['position']['position'], self.action_data['direction'])
             print(f"[CRYPTO-INSIGHT] Opened position {self.action_data['position']['position']}: {self.action_data['symbol']}")
             self.set_stop_loss_price(self.action_data['symbol'], self.action_data['position']['sl'], self.action_data['direction'], position_mode)
@@ -53,6 +58,36 @@ class CIAutoTrader:
             self.fire_early_exit(self.action_data['symbol'], self.action_data['direction'])
             print(f"[CRYPTO-INSIGHT] Early exit fired: {self.action_data['symbol']}")
         return  None
+
+    def has_open_position(
+            self,
+            symbol: str,
+            direction: Optional[str] = None,  # "LONG"/"SHORT" или None = любая
+    ) -> bool:
+        rows = self._safe_call(
+            self.client.rest_api.position_information_v3,
+            symbol=symbol.upper(),
+        ) or []
+
+        if not rows:
+            return False
+
+        direction = direction.upper()
+        position_mode = self.get_position_mode()
+        if position_mode == "HEDGE":
+            for r in rows:
+                if (
+                        str(r.position_side).upper() == direction
+                        and float(r.position_amt) != 0
+                ):
+                    return True
+            return False
+        pos_amt = float(rows[0].position_amt)
+
+        if direction == "LONG":
+            return pos_amt > 0
+        else:
+            return pos_amt < 0
 
     def round_to_step(self, value, step):
         dval = Decimal(str(value))
