@@ -27,7 +27,7 @@ def on_command_run(data):
     result = trader.execute_action()
     if result:
         print("[CRYPTO-INSIGHT] - Sending report to server")
-        time.sleep(60)
+        sio.sleep(60)
         print("[CRYPTO-INSIGHT] - Report sent")
         sio.emit(
             "command.result",

@@ -120,32 +120,48 @@ class CIAutoTrader:
         hedge = ("LONG" in sides_present) or ("SHORT" in sides_present)
         position_side = direction if hedge else "BOTH"
 
-        open_orders = self._safe_call(self.client.rest_api.current_all_open_orders, symbol=symbol) or []
         sl_side = "SELL" if direction == "LONG" else "BUY"
+
+        open_algo_orders = self._safe_call(
+            self.client.rest_api.current_all_algo_open_orders,
+            algo_type="CONDITIONAL",
+            symbol=symbol,
+        ) or []
+
+        if not isinstance(open_algo_orders, list):
+            open_algo_orders = [open_algo_orders]
+
         to_cancel = [
-            o for o in open_orders
-            if o.side == sl_side
-               and o.position_side == position_side
-               and o.orig_type in ("STOP_MARKET", "STOP")
+            o for o in open_algo_orders
+            if str(getattr(o, "side", "")).upper() == sl_side
+               and str(getattr(o, "position_side", "")).upper() == position_side
+               and str(getattr(o, "order_type", "")).upper() in ("STOP_MARKET", "STOP")
         ]
         for o in to_cancel:
-            self._safe_call(
-                self.client.rest_api.cancel_order,
-                symbol=symbol,
-                order_id=o.order_id,
-            )
+            algo_id = getattr(o, "algo_id", None)
+            if algo_id is not None:
+                self._safe_call(self.client.rest_api.cancel_algo_order, algoid=int(algo_id))
+
         params = {
-            "symbol": symbol,
+            "algo_type": "CONDITIONAL",
+            "symbol": symbol.upper(),
             "side": sl_side,
             "type": "STOP_MARKET",
-            "stop_price": float(price),
-            "close_position": True,
+            "trigger_price": float(price),
+            "close_position": "true",
             "position_side": position_side,
             "working_type": "MARK_PRICE",
-            "price_protect": True,
+            "price_protect": "TRUE",
         }
-        data = self._safe_call(self.client.rest_api.new_order, **params)
-        return int(data["orderId"]) if data and "orderId" in data else None
+        data = self._safe_call(self.client.rest_api.new_algo_order, **params)
+
+        if not data:
+            return None
+        if hasattr(data, "algo_id") and data.algo_id is not None:
+            return int(data.algo_id)
+        if isinstance(data, dict) and "algoId" in data:
+            return int(data["algoId"])
+        return None
 
 
 
@@ -187,8 +203,6 @@ class CIAutoTrader:
         }
         self._safe_call(self.client.rest_api.new_order, **tp_params)
 
-
-
     def set_stop_loss_price(
             self,
             symbol: str,
@@ -203,41 +217,47 @@ class CIAutoTrader:
         position_side = "BOTH" if position_mode == "ONE_WAY" else side
 
         params = {
+            "algo_type": "CONDITIONAL",
             "symbol": symbol.upper(),
             "side": order_side,
             "type": "STOP_MARKET",
-            "stop_price": float(stop_loss_price),
-            "close_position": True,
+            "trigger_price": float(stop_loss_price),
+            "close_position": "true",
             "position_side": position_side,
             "working_type": working_type,
-            "price_protect": price_protect,
+            "price_protect": "TRUE" if price_protect else "FALSE",
         }
-        data = self._safe_call(self.client.rest_api.new_order, **params)
+        data = self._safe_call(self.client.rest_api.new_algo_order, **params)
         return data
 
     def place_take_profits(self, symbol, take_profits, side, position_mode, full_position_quantity):
         order_side = "SELL" if side == "LONG" else "BUY"
         position_side = "BOTH" if position_mode == "ONE_WAY" else side
+
         for take_profit in take_profits:
             params = {
+                "algo_type": "CONDITIONAL",
                 "symbol": symbol.upper(),
                 "side": order_side,
                 "type": "TAKE_PROFIT_MARKET",
-                "stop_price": float(take_profit["price"]),
+                "trigger_price": float(take_profit["price"]),
                 "position_side": position_side,
                 "working_type": "MARK_PRICE",
-                "price_protect": True,
+                "price_protect": "TRUE",
             }
 
             full_position_quantity = full_position_quantity - take_profit["quantity"]
-            if  full_position_quantity <= 0 :
-                params["close_position"] = True
+            if full_position_quantity <= 0:
+                # Close-All TP
+                params["close_position"] = "true"
             else:
                 params["quantity"] = float(take_profit["quantity"])
-                params["reduce_only"] = True
-            self._safe_call(self.client.rest_api.new_order, **params)
-            print(
-                f"[CRYPTO-INSIGHT] Take profit at {take_profit['price']} set for {symbol}")
+                # В Algo API reduceOnly нельзя отправлять в Hedge Mode
+                if position_mode == "ONE_WAY":
+                    params["reduce_only"] = "true"
+
+            self._safe_call(self.client.rest_api.new_algo_order, **params)
+            print(f"[CRYPTO-INSIGHT] Take profit at {take_profit['price']} set for {symbol}")
 
 
     from typing import Optional, Dict, Any
