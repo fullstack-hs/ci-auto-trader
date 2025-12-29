@@ -110,22 +110,24 @@ class CIAutoTrader:
                "position_side": position_side,
                "quantity": float(close_qty),
                "type": "MARKET",
-               "reduce_only": True,
            }
+           position_mode = self.get_position_mode()
+           if position_mode == "ONE_WAY":
+               tp_params["reduce_only"] = True
+
            self._safe_call(self.client.rest_api.new_order, **tp_params)
 
     def move_trailing_stop(self, symbol, direction, price):
-        rows = self._safe_call(self.client.rest_api.position_information_v3, symbol=symbol) or []
-        sides_present = {str(r.position_side).upper() for r in rows}
-        hedge = ("LONG" in sides_present) or ("SHORT" in sides_present)
-        position_side = direction if hedge else "BOTH"
+        direction = direction.upper()
+        position_mode = self.get_position_mode() or "ONE_WAY"  # фолбэк, чтобы не “угадывать”
+        position_side = direction if position_mode == "HEDGE" else "BOTH"
 
         sl_side = "SELL" if direction == "LONG" else "BUY"
 
         open_algo_orders = self._safe_call(
             self.client.rest_api.current_all_algo_open_orders,
             algo_type="CONDITIONAL",
-            symbol=symbol,
+            symbol=symbol.upper(),
         ) or []
 
         if not isinstance(open_algo_orders, list):
@@ -137,6 +139,7 @@ class CIAutoTrader:
                and str(getattr(o, "position_side", "")).upper() == position_side
                and str(getattr(o, "order_type", "")).upper() in ("STOP_MARKET", "STOP")
         ]
+
         for o in to_cancel:
             algo_id = getattr(o, "algo_id", None)
             if algo_id is not None:
@@ -163,31 +166,28 @@ class CIAutoTrader:
             return int(data["algoId"])
         return None
 
+    def get_position_size_and_sides(self, symbol: str, direction: str):
+        direction = direction.upper()
+        rows = self._safe_call(self.client.rest_api.position_information_v3, symbol=symbol.upper()) or []
+        position_mode = self.get_position_mode() or "ONE_WAY"
 
-
-
-
-    def get_position_size_and_sides(self, symbol, direction):
-        rows = self._safe_call(self.client.rest_api.position_information_v3, symbol=symbol) or []
-        sides = {r.position_side for r in rows}
-        hedge = ('LONG' in sides) or ('SHORT' in sides)
-
-        if hedge:
-            amt, be = next((abs(float(r.position_amt), float(r.break_even_price)) for r in rows
-                        if r.position_Side == direction), 0.0)
+        if position_mode == "HEDGE":
+            row = next((r for r in rows if str(getattr(r, "position_side", "")).upper() == direction), None)
+            amt = abs(float(getattr(row, "position_amt", 0.0))) if row else 0.0
+            be = float(getattr(row, "break_even_price", 0.0)) if row else 0.0
             position_side = direction
         else:
-            r = rows[0] if rows else {}
-            signed = float(r.position_amt)
-            be = float(r.break_even_price)
-            if direction == 'LONG' and signed > 0:
-                amt = abs(signed)
-            elif direction == 'SHORT' and signed < 0:
+            row = rows[0] if rows else None
+            signed = float(getattr(row, "position_amt", 0.0)) if row else 0.0
+            be = float(getattr(row, "break_even_price", 0.0)) if row else 0.0
+
+            if (direction == "LONG" and signed > 0) or (direction == "SHORT" and signed < 0):
                 amt = abs(signed)
             else:
                 amt = 0.0
-            position_side = 'BOTH'
-        side = 'SELL' if direction == 'LONG' else 'BUY'
+            position_side = "BOTH"
+
+        side = "SELL" if direction == "LONG" else "BUY"
         return amt, position_side, side, be
 
     def do_take_profit(self, symbol, quantity, direction):
