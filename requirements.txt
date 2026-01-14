@@ -1,3 +1,4 @@
 python-socketio==5.14.2
 binance_sdk_margin_trading==3.0.0
 binance-sdk-derivatives-trading-usds-futures==4.0.0
+python-dotenv==1.0.1
