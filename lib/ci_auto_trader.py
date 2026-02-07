@@ -23,29 +23,31 @@ class CIAutoTrader:
         self.client = DerivativesTradingUsdsFutures(config_rest_api=configuration)
 
     def execute_action(self):
-        self.logger.info(f"Received command: {self.action_data['action']}", extra={"action_data": self.action_data})
+        symbol = self.action_data.get('symbol')
+        self.logger.info(f"Received command: {self.action_data['action']}", extra={"action_data": self.action_data, "symbol": symbol})
         if self.action_data["action"] == "OPEN_POSITION":
             self.set_isolated_margin(self.action_data['symbol'])
-            self.logger.info(f"Isolated margin set for: {self.action_data['symbol']}")
+            self.logger.info(f"Isolated margin set for: {self.action_data['symbol']}", extra={"symbol": symbol})
             self.set_leverage(self.action_data['symbol'], self.action_data['position']['leverage'])
             self.logger.info(
-                f"Leverage {self.action_data['position']['leverage']} set for: {self.action_data['symbol']}")
+                f"Leverage {self.action_data['position']['leverage']} set for: {self.action_data['symbol']}", extra={"symbol": symbol})
             position_mode = self.get_position_mode()
             if self.has_open_position(self.action_data['symbol'], self.action_data['direction']):
                 self.logger.info(
-                    f"Position for {self.action_data['symbol']} {self.action_data['direction']} already exists, skip opening"
+                    f"Position for {self.action_data['symbol']} {self.action_data['direction']} already exists, skip opening",
+                    extra={"symbol": symbol}
                 )
                 return None
             opened_position = self.open_position(self.action_data['symbol'], position_mode,
                                                  self.action_data['position']['position'],
                                                  self.action_data['direction'])
             self.logger.info(
-                f"Opened position {self.action_data['position']['position']}: {self.action_data['symbol']}")
+                f"Opened position {self.action_data['position']['position']}: {self.action_data['symbol']}", extra={"symbol": symbol})
             self.set_stop_loss_price(self.action_data['symbol'], self.action_data['position']['sl'],
                                      self.action_data['direction'], position_mode)
             self.logger.info(
-                f"Stop loss set at price {self.action_data['position']['sl']} for {self.action_data['symbol']}")
-            self.logger.info(f"Position opened: {opened_position}")
+                f"Stop loss set at price {self.action_data['position']['sl']} for {self.action_data['symbol']}", extra={"symbol": symbol})
+            self.logger.info(f"Position opened: {opened_position}", extra={"symbol": symbol})
             return opened_position
         elif self.action_data["action"] == "PLACE_TP":
             position_mode = self.get_position_mode()
@@ -54,18 +56,18 @@ class CIAutoTrader:
                                     self.action_data['position']['quantity'])
         elif self.action_data["action"] == "DO_TAKE_PROFIT":
             self.do_take_profit(self.action_data['symbol'], self.action_data['quantity'], self.action_data['direction'])
-            self.logger.info(f"Take profit executed: {self.action_data['symbol']}")
+            self.logger.info(f"Take profit executed: {self.action_data['symbol']}", extra={"symbol": symbol})
         elif self.action_data["action"] == "MOVE_TRAILING_STOP":
             self.move_trailing_stop(self.action_data['symbol'], self.action_data['direction'],
                                     self.action_data['new_price'])
-            self.logger.info(f"Trailing stop moved: {self.action_data['symbol']}")
+            self.logger.info(f"Trailing stop moved: {self.action_data['symbol']}", extra={"symbol": symbol})
         elif self.action_data["action"] == "SET_BREAK_EVEN":
             self.set_break_even(self.action_data['symbol'], self.action_data['direction'],
                                 self.action_data['precision'])
-            self.logger.info(f"Break even set: {self.action_data['symbol']}")
+            self.logger.info(f"Break even set: {self.action_data['symbol']}", extra={"symbol": symbol})
         elif self.action_data["action"] == "FIRE_EARLY_EXIT":
             self.fire_early_exit(self.action_data['symbol'], self.action_data['direction'])
-            self.logger.info(f"Early exit fired: {self.action_data['symbol']}")
+            self.logger.info(f"Early exit fired: {self.action_data['symbol']}", extra={"symbol": symbol})
         return None
 
     def has_open_position(
@@ -266,7 +268,7 @@ class CIAutoTrader:
                     params["reduce_only"] = "true"
 
             self._safe_call(self.client.rest_api.new_algo_order, **params)
-            self.logger.info(f"Take profit at {take_profit['price']} set for {symbol}")
+            self.logger.info(f"Take profit at {take_profit['price']} set for {symbol}", extra={"symbol": symbol})
 
     from typing import Optional, Dict, Any
 
@@ -323,17 +325,18 @@ class CIAutoTrader:
 
     def _safe_call(self, fn, **params):
         fn_name = fn.__name__
+        symbol = params.get('symbol')
         for attempt in range(3):
-            self.logger.debug(f"API Request: {fn_name}", extra={"params": params, "attempt": attempt + 1})
+            self.logger.debug(f"API Request: {fn_name}", extra={"params": params, "attempt": attempt + 1, "symbol": symbol})
             try:
                 resp = fn(**params)
                 result = resp.data() if hasattr(resp, "data") else resp
-                self.logger.debug(f"API Response Success: {fn_name}", extra={"result": result})
+                self.logger.debug(f"API Response Success: {fn_name}", extra={"result": result, "symbol": symbol})
                 return result
             except Exception as e:
                 code, text = self._extract_binance_err(e)
                 if code == -4046:
-                    self.logger.debug(f"API Notice: {fn_name} - {text}")
+                    self.logger.debug(f"API Notice: {fn_name} - {text}", extra={"symbol": symbol})
                     return None
                 
                 self.logger.error(f"Binance API error in {fn_name}", extra={
@@ -341,12 +344,13 @@ class CIAutoTrader:
                     "error": str(e),
                     "code": code,
                     "text": text,
-                    "attempt": attempt + 1
+                    "attempt": attempt + 1,
+                    "symbol": symbol
                 })
                 
                 if attempt < 2:
                     wait_time = 0.5 * (2 ** attempt)
-                    self.logger.info(f"Retrying {fn_name} in {wait_time}s...")
+                    self.logger.info(f"Retrying {fn_name} in {wait_time}s...", extra={"symbol": symbol})
                     time.sleep(wait_time)
                     continue
                 return None
