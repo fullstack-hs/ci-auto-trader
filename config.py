@@ -14,7 +14,7 @@ BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET")
 
 # Logging Configuration
 GRAYLOG_HOST = os.getenv("GRAYLOG_HOST")
-GRAYLOG_PORT = int(os.getenv("GRAYLOG_PORT"))
+GRAYLOG_PORT = int(os.getenv("GRAYLOG_PORT", 0))
 
 ID_FILE = ".unique_id"
 ENV_UNIQUE_ID = os.getenv("UNIQUE_ID")
