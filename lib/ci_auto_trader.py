@@ -1,4 +1,3 @@
-import os
 from typing import Optional, Literal, Dict, Any, Tuple
 from binance_common.configuration import ConfigurationRestAPI
 from binance_common.constants import DERIVATIVES_TRADING_USDS_FUTURES_REST_API_PROD_URL
@@ -8,37 +7,45 @@ from typing import Optional, Literal
 import time
 import re
 from decimal import Decimal, ROUND_HALF_UP, ROUND_FLOOR, ROUND_CEILING
+from config import BINANCE_API_KEY, BINANCE_API_SECRET
+from lib.logger import Logger
 
 PositionMode = Literal["ONE_WAY", "HEDGE"]
 
+
 class CIAutoTrader:
-
-
     def __init__(self, data):
         self.action_data = data
-        configuration = ConfigurationRestAPI(api_key=os.getenv("BINANCE_API_KEY", None), api_secret=os.getenv("BINANCE_API_SECRET", None),
-                                         base_path=DERIVATIVES_TRADING_USDS_FUTURES_REST_API_PROD_URL)
+        self.logger = Logger("CIAutoTrader")
+        configuration = ConfigurationRestAPI(api_key=BINANCE_API_KEY,
+                                             api_secret=BINANCE_API_SECRET,
+                                             base_path=DERIVATIVES_TRADING_USDS_FUTURES_REST_API_PROD_URL)
         self.client = DerivativesTradingUsdsFutures(config_rest_api=configuration)
 
     def execute_action(self):
-        print(f"[CRYPTO-INSIGHT] Received command: {self.action_data['action']}")
+        self.logger.info(f"Received command: {self.action_data['action']}", extra={"action_data": self.action_data})
         if self.action_data["action"] == "OPEN_POSITION":
             self.set_isolated_margin(self.action_data['symbol'])
-            print(f"[CRYPTO-INSIGHT] Isolated margin set for: {self.action_data['symbol']}")
+            self.logger.info(f"Isolated margin set for: {self.action_data['symbol']}")
             self.set_leverage(self.action_data['symbol'], self.action_data['position']['leverage'])
-            print(f"[CRYPTO-INSIGHT] Leverage f{self.action_data['position']['leverage']} set for: {self.action_data['symbol']}")
+            self.logger.info(
+                f"Leverage {self.action_data['position']['leverage']} set for: {self.action_data['symbol']}")
             position_mode = self.get_position_mode()
             if self.has_open_position(self.action_data['symbol'], self.action_data['direction']):
-                print(
-                    f"[CRYPTO-INSIGHT] Position for {self.action_data['symbol']} {self.action_data['direction']} already exists, skip opening"
+                self.logger.info(
+                    f"Position for {self.action_data['symbol']} {self.action_data['direction']} already exists, skip opening"
                 )
                 return None
-            opened_position = self.open_position(self.action_data['symbol'], position_mode, self.action_data['position']['position'], self.action_data['direction'])
-            print(f"[CRYPTO-INSIGHT] Opened position {self.action_data['position']['position']}: {self.action_data['symbol']}")
-            self.set_stop_loss_price(self.action_data['symbol'], self.action_data['position']['sl'], self.action_data['direction'], position_mode)
-            print(
-                f"[CRYPTO-INSIGHT] Stop loss set at price {self.action_data['position']['sl']} for {self.action_data['symbol']}")
-            print(f"[CRYPTO-INSIGHT] Position opened: {opened_position}")
+            opened_position = self.open_position(self.action_data['symbol'], position_mode,
+                                                 self.action_data['position']['position'],
+                                                 self.action_data['direction'])
+            self.logger.info(
+                f"Opened position {self.action_data['position']['position']}: {self.action_data['symbol']}")
+            self.set_stop_loss_price(self.action_data['symbol'], self.action_data['position']['sl'],
+                                     self.action_data['direction'], position_mode)
+            self.logger.info(
+                f"Stop loss set at price {self.action_data['position']['sl']} for {self.action_data['symbol']}")
+            self.logger.info(f"Position opened: {opened_position}")
             return opened_position
         elif self.action_data["action"] == "PLACE_TP":
             position_mode = self.get_position_mode()
@@ -47,17 +54,19 @@ class CIAutoTrader:
                                     self.action_data['position']['quantity'])
         elif self.action_data["action"] == "DO_TAKE_PROFIT":
             self.do_take_profit(self.action_data['symbol'], self.action_data['quantity'], self.action_data['direction'])
-            print(f"[CRYPTO-INSIGHT] Take profit executed: {self.action_data['symbol']}")
+            self.logger.info(f"Take profit executed: {self.action_data['symbol']}")
         elif self.action_data["action"] == "MOVE_TRAILING_STOP":
-            self.move_trailing_stop(self.action_data['symbol'], self.action_data['direction'], self.action_data['new_price'])
-            print(f"[CRYPTO-INSIGHT] Trailing stop moved: {self.action_data['symbol']}")
+            self.move_trailing_stop(self.action_data['symbol'], self.action_data['direction'],
+                                    self.action_data['new_price'])
+            self.logger.info(f"Trailing stop moved: {self.action_data['symbol']}")
         elif self.action_data["action"] == "SET_BREAK_EVEN":
-            self.set_break_even(self.action_data['symbol'], self.action_data['direction'], self.action_data['precision'])
-            print(f"[CRYPTO-INSIGHT] Break even set: {self.action_data['symbol']}")
+            self.set_break_even(self.action_data['symbol'], self.action_data['direction'],
+                                self.action_data['precision'])
+            self.logger.info(f"Break even set: {self.action_data['symbol']}")
         elif self.action_data["action"] == "FIRE_EARLY_EXIT":
             self.fire_early_exit(self.action_data['symbol'], self.action_data['direction'])
-            print(f"[CRYPTO-INSIGHT] Early exit fired: {self.action_data['symbol']}")
-        return  None
+            self.logger.info(f"Early exit fired: {self.action_data['symbol']}")
+        return None
 
     def has_open_position(
             self,
@@ -98,24 +107,24 @@ class CIAutoTrader:
         return float(res)
 
     def set_break_even(self, symbol, direction, precision):
-        close_qty, position_side, side, be  = self.get_position_size_and_sides(symbol, direction)
-        self.move_trailing_stop(symbol, direction,self.round_to_step(be, precision))
+        close_qty, position_side, side, be = self.get_position_size_and_sides(symbol, direction)
+        self.move_trailing_stop(symbol, direction, self.round_to_step(be, precision))
 
     def fire_early_exit(self, symbol, direction):
-       close_qty, position_side, side, be  = self.get_position_size_and_sides(symbol, direction)
-       if close_qty > 0:
-           tp_params: Dict[str, Any] = {
-               "symbol": symbol.upper(),
-               "side": side,
-               "position_side": position_side,
-               "quantity": float(close_qty),
-               "type": "MARKET",
-           }
-           position_mode = self.get_position_mode()
-           if position_mode == "ONE_WAY":
-               tp_params["reduce_only"] = True
+        close_qty, position_side, side, be = self.get_position_size_and_sides(symbol, direction)
+        if close_qty > 0:
+            tp_params: Dict[str, Any] = {
+                "symbol"       : symbol.upper(),
+                "side"         : side,
+                "position_side": position_side,
+                "quantity"     : float(close_qty),
+                "type"         : "MARKET",
+            }
+            position_mode = self.get_position_mode()
+            if position_mode == "ONE_WAY":
+                tp_params["reduce_only"] = True
 
-           self._safe_call(self.client.rest_api.new_order, **tp_params)
+            self._safe_call(self.client.rest_api.new_order, **tp_params)
 
     def move_trailing_stop(self, symbol, direction, price):
         direction = direction.upper()
@@ -146,15 +155,15 @@ class CIAutoTrader:
                 self._safe_call(self.client.rest_api.cancel_algo_order, algoid=int(algo_id))
 
         params = {
-            "algo_type": "CONDITIONAL",
-            "symbol": symbol.upper(),
-            "side": sl_side,
-            "type": "STOP_MARKET",
-            "trigger_price": float(price),
+            "algo_type"     : "CONDITIONAL",
+            "symbol"        : symbol.upper(),
+            "side"          : sl_side,
+            "type"          : "STOP_MARKET",
+            "trigger_price" : float(price),
             "close_position": "true",
-            "position_side": position_side,
-            "working_type": "MARK_PRICE",
-            "price_protect": "TRUE",
+            "position_side" : position_side,
+            "working_type"  : "MARK_PRICE",
+            "price_protect" : "TRUE",
         }
         data = self._safe_call(self.client.rest_api.new_algo_order, **params)
 
@@ -194,12 +203,12 @@ class CIAutoTrader:
         amt, position_side, side, be = self.get_position_size_and_sides(symbol, direction)
         close_qty = min(quantity, amt)
         tp_params: Dict[str, Any] = {
-            "symbol": symbol.upper(),
-            "side": side,
+            "symbol"       : symbol.upper(),
+            "side"         : side,
             "position_side": position_side,
-            "quantity": float(close_qty),
-            "type": "MARKET",
-            "reduce_only": True,
+            "quantity"     : float(close_qty),
+            "type"         : "MARKET",
+            "reduce_only"  : True,
         }
         self._safe_call(self.client.rest_api.new_order, **tp_params)
 
@@ -217,15 +226,15 @@ class CIAutoTrader:
         position_side = "BOTH" if position_mode == "ONE_WAY" else side
 
         params = {
-            "algo_type": "CONDITIONAL",
-            "symbol": symbol.upper(),
-            "side": order_side,
-            "type": "STOP_MARKET",
-            "trigger_price": float(stop_loss_price),
+            "algo_type"     : "CONDITIONAL",
+            "symbol"        : symbol.upper(),
+            "side"          : order_side,
+            "type"          : "STOP_MARKET",
+            "trigger_price" : float(stop_loss_price),
             "close_position": "true",
-            "position_side": position_side,
-            "working_type": working_type,
-            "price_protect": "TRUE" if price_protect else "FALSE",
+            "position_side" : position_side,
+            "working_type"  : working_type,
+            "price_protect" : "TRUE" if price_protect else "FALSE",
         }
         data = self._safe_call(self.client.rest_api.new_algo_order, **params)
         return data
@@ -236,13 +245,13 @@ class CIAutoTrader:
 
         for take_profit in take_profits:
             params = {
-                "algo_type": "CONDITIONAL",
-                "symbol": symbol.upper(),
-                "side": order_side,
-                "type": "TAKE_PROFIT_MARKET",
+                "algo_type"    : "CONDITIONAL",
+                "symbol"       : symbol.upper(),
+                "side"         : order_side,
+                "type"         : "TAKE_PROFIT_MARKET",
                 "trigger_price": float(take_profit["price"]),
                 "position_side": position_side,
-                "working_type": "MARK_PRICE",
+                "working_type" : "MARK_PRICE",
                 "price_protect": "TRUE",
             }
 
@@ -257,8 +266,7 @@ class CIAutoTrader:
                     params["reduce_only"] = "true"
 
             self._safe_call(self.client.rest_api.new_algo_order, **params)
-            print(f"[CRYPTO-INSIGHT] Take profit at {take_profit['price']} set for {symbol}")
-
+            self.logger.info(f"Take profit at {take_profit['price']} set for {symbol}")
 
     from typing import Optional, Dict, Any
 
@@ -274,29 +282,23 @@ class CIAutoTrader:
 
         is_hedge = str(position_mode).upper() == "HEDGE"
 
-
-
         base_params: Dict[str, Any] = {
-            "symbol": symbol.upper(),
-            "side": binance_side,
+            "symbol"  : symbol.upper(),
+            "side"    : binance_side,
             "quantity": float(quantity),
 
         }
-
 
         if is_hedge:
             base_params["position_side"] = hedge_pos_side
         else:
             base_params["position_side"] = "BOTH"
 
-
-
-
         market_params = dict(base_params)
         market_params.update(
             {
-                "type": "MARKET",
-                "quantity": quantity,
+                "type"               : "MARKET",
+                "quantity"           : quantity,
                 "new_order_resp_type": "RESULT",
             }
         )
@@ -320,20 +322,34 @@ class CIAutoTrader:
         return bool(data)
 
     def _safe_call(self, fn, **params):
+        fn_name = fn.__name__
         for attempt in range(3):
+            self.logger.debug(f"API Request: {fn_name}", extra={"params": params, "attempt": attempt + 1})
             try:
                 resp = fn(**params)
-                return resp.data() if hasattr(resp, "data") else resp
+                result = resp.data() if hasattr(resp, "data") else resp
+                self.logger.debug(f"API Response Success: {fn_name}", extra={"result": result})
+                return result
             except Exception as e:
                 code, text = self._extract_binance_err(e)
                 if code == -4046:
+                    self.logger.debug(f"API Notice: {fn_name} - {text}")
                     return None
-                print("Binance API error in %s(%s): %s", fn.__name__, params, e)
+                
+                self.logger.error(f"Binance API error in {fn_name}", extra={
+                    "params": params,
+                    "error": str(e),
+                    "code": code,
+                    "text": text,
+                    "attempt": attempt + 1
+                })
+                
                 if attempt < 2:
-                    time.sleep(0.5 * (2 ** attempt))
+                    wait_time = 0.5 * (2 ** attempt)
+                    self.logger.info(f"Retrying {fn_name} in {wait_time}s...")
+                    time.sleep(wait_time)
                     continue
                 return None
-
 
     def get_position_mode(self) -> Optional[PositionMode]:
         data = self._safe_call(self.client.rest_api.get_current_position_mode)
