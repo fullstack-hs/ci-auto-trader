@@ -40,6 +40,15 @@ def connect_error(data):
 
 
 def main():
+    # Check API connectivity and time synchronization at startup
+    try:
+        logger.info("Checking Binance API connectivity and time sync...")
+        trader = CIAutoTrader({})
+        trader.get_position_mode()
+        logger.info("API Check: OK")
+    except Exception as e:
+        logger.error(f"Initial API check failed: {e}")
+
     while True:
         try:
             logger.info(f"Connecting to {HUB_URL}...")

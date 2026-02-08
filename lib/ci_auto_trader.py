@@ -22,6 +22,7 @@ class CIAutoTrader:
                                              base_path=DERIVATIVES_TRADING_USDS_FUTURES_REST_API_PROD_URL)
         self.client = DerivativesTradingUsdsFutures(config_rest_api=configuration)
 
+
     def execute_action(self):
         symbol = self.action_data.get('symbol')
         self.logger.info(f"Received command: {self.action_data['action']}", extra={"action_data": self.action_data, "symbol": symbol})
@@ -326,6 +327,10 @@ class CIAutoTrader:
     def _safe_call(self, fn, **params):
         fn_name = fn.__name__
         symbol = params.get('symbol')
+        
+        if "recv_window" not in params:
+            params["recv_window"] = 20000
+
         for attempt in range(3):
             self.logger.debug(f"API Request: {fn_name}", extra={"params": params, "attempt": attempt + 1, "symbol": symbol})
             try:
@@ -338,6 +343,9 @@ class CIAutoTrader:
                 if code == -4046:
                     self.logger.debug(f"API Notice: {fn_name} - {text}", extra={"symbol": symbol})
                     return None
+                
+                if "Timestamp for this request is outside of the recvWindow" in str(e):
+                    self.logger.warning(f"Time sync issue detected in {fn_name}. Local time: {int(time.time()*1000)}", extra={"symbol": symbol})
                 
                 self.logger.error(f"Binance API error in {fn_name}", extra={
                     "params": params,
