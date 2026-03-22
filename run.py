@@ -10,14 +10,19 @@ sio = socketio.Client(reconnection=True, reconnection_attempts=0, logger=False, 
 
 @sio.event(namespace="/machines")
 def connect():
-    logger.info("CONNECTED to crypto-insight")
+    logger.info("CONNECTED to STREAM")
     logger.info("Waiting for commands...")
 
 
 @sio.event(namespace="/machines")
 def disconnect():
-    logger.info("Disconnected from crypto-insight")
+    logger.info("Disconnected from STREAM")
 
+@sio.on("service.msg", namespace="/machines")
+def on_service_msg(data):
+    print("="*100)
+    print(data)
+    print("=" * 100)
 
 @sio.on("command.run", namespace="/machines")
 def on_command_run(data):
@@ -25,7 +30,6 @@ def on_command_run(data):
     result = trader.execute_action()
     if result:
         logger.info("Sending report to server", extra={"order_id": result})
-        sio.sleep(60)
         logger.info("Report sent")
         sio.emit(
             "command.result",
