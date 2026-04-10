@@ -20,12 +20,11 @@ def disconnect():
 
 @sio.on("service.msg", namespace="/machines")
 def on_service_msg(data):
-    print("="*100)
-    print(data)
-    print("=" * 100)
+    logger.info("Received service message", extra={"raw_data": data})
 
 @sio.on("command.run", namespace="/machines")
 def on_command_run(data):
+    logger.info("Received command from socket", extra={"raw_data": data})
     trader = CIAutoTrader(data)
     result = trader.execute_action()
     if result:

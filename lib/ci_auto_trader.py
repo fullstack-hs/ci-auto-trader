@@ -246,30 +246,33 @@ class CIAutoTrader:
         order_side = "SELL" if side == "LONG" else "BUY"
         position_side = "BOTH" if position_mode == "ONE_WAY" else side
 
+        remaining = abs(full_position_quantity)
+
         for take_profit in take_profits:
             params = {
-                "algo_type"    : "CONDITIONAL",
-                "symbol"       : symbol.upper(),
-                "side"         : order_side,
-                "type"         : "TAKE_PROFIT_MARKET",
+                "algo_type": "CONDITIONAL",
+                "symbol": symbol.upper(),
+                "side": order_side,
+                "type": "TAKE_PROFIT_MARKET",
                 "trigger_price": float(take_profit["price"]),
                 "position_side": position_side,
-                "working_type" : "MARK_PRICE",
+                "working_type": "MARK_PRICE",
                 "price_protect": "TRUE",
             }
 
-            full_position_quantity = full_position_quantity - take_profit["quantity"]
-            if full_position_quantity <= 0:
-                # Close-All TP
-                params["close_position"] = "true"
+            remaining -= take_profit["quantity"]
+
+            if remaining <= 0:
+                params["quantity"] = float(take_profit["quantity"] + remaining)  # clamp
             else:
                 params["quantity"] = float(take_profit["quantity"])
-                # В Algo API reduceOnly нельзя отправлять в Hedge Mode
-                if position_mode == "ONE_WAY":
-                    params["reduce_only"] = "true"
+
+            if position_mode == "ONE_WAY":
+                params["reduce_only"] = "true"
 
             self._safe_call(self.client.rest_api.new_algo_order, **params)
             self.logger.info(f"Take profit at {take_profit['price']} set for {symbol}", extra={"symbol": symbol})
+
 
     from typing import Optional, Dict, Any
 
@@ -354,7 +357,7 @@ class CIAutoTrader:
                     "text": text,
                     "attempt": attempt + 1,
                     "symbol": symbol
-                })
+                }, exc_info=True)
                 
                 if attempt < 2:
                     wait_time = 0.5 * (2 ** attempt)
